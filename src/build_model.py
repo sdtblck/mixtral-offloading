@@ -23,6 +23,7 @@ from .custom_layers import (
     HQQLinearTritonSavable,
     MixtralBLockSparseTop2MLP_HQQ,
     SparseMoeWrapper,
+    PreFetchWrapper,
 )
 from .utils import with_default_dtype
 
@@ -168,7 +169,8 @@ def build_model(
     quant_config: QuantConfig,
     offload_config: OffloadConfig,
     state_path: str,
-):
+    use_prefetch_wrapper: bool = False,
+) -> MixtralForCausalLM | PreFetchWrapper:
     model_name = "mistralai/Mixtral-8x7B-Instruct-v0.1"
 
     state_dict_00 = load_00_expert_state_dict(state_path, device)
@@ -180,7 +182,8 @@ def build_model(
         return MixtralExpertWrapper(expert, device=device)
 
     with device, with_default_dtype(torch.float16):
-        model = MixtralForCausalLM(
+        cls = MixtralForCausalLM if not use_prefetch_wrapper else PreFetchWrapper
+        model = cls(
             AutoConfig.from_pretrained(
                 model_name,
                 num_local_experts=0,
@@ -239,3 +242,14 @@ def build_model(
             torch.cuda.empty_cache()
 
     return model
+
+
+def build_prefetch_model(
+    device: torch.device,
+    quant_config: QuantConfig,
+    offload_config: OffloadConfig,
+    state_path: str,
+) -> PreFetchWrapper:
+    return build_model(
+        device, quant_config, offload_config, state_path, use_prefetch_wrapper=True
+    )
